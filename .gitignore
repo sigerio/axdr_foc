@@ -1,0 +1,16 @@
+# Local tooling and credentials
+/.agents/
+/.codex/
+/.aws/
+
+# Keil build products
+/MDK-ARM/Axdr3/
+/MDK-ARM/*.lst
+/MDK-ARM/*.log
+/MDK-ARM/*.uvguix.*
+/MDK-ARM/JLinkLog.txt
+
+# Editor temporary files
+*~
+*.swp
+*.swo
