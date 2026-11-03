@@ -2,13 +2,27 @@
 /.agents/
 /.codex/
 /.aws/
+/test/
+/tests/
 
 # Keil build products
 /MDK-ARM/Axdr3/
 /MDK-ARM/*.lst
 /MDK-ARM/*.log
 /MDK-ARM/*.uvguix.*
+/MDK-ARM/*.uvoptx
 /MDK-ARM/JLinkLog.txt
+/MDK-ARM/JLinkSettings.ini
+*.o
+*.d
+*.crf
+*.axf
+*.hex
+*.bin
+*.map
+*.lnp
+*.dep
+*.iex
 
 # Editor temporary files
 *~

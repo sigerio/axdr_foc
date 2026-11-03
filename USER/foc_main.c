@@ -42,6 +42,8 @@ static void foc_prepare(void)
     pid_clear(&iq_pi);
     pid_clear(&spd_pi);
     vesc_pll_reset();
+    speed_td.speed_rpm = 0.0f;
+    speed_td.accel_rpm_s = 0.0f;
 
     id_pi.ref_value = id_pi.fback_value = 0.0f;
     iq_pi.ref_value = iq_pi.fback_value = 0.0f;
@@ -135,7 +137,19 @@ static void foc_open_if(void)
 
 static void foc_open2close(void)
 {
-    /* TODO: 确认角度反馈有效，平滑切换角度和控制指令后进入闭环。 */
+    /* OPEN_IF 的速度偏差满足条件后调用；速度接近本身不保证观测角度准确。
+     * 在本拍 IF 电流 PI 完成后调用，使用本拍 PLL 速度，不使用主循环旧值。
+     */
+    foc_sample.pll_speed = pll_info.omega * 60.0f / (FOC_TWO_PI * MOTOR_POLE_PAIRS);
+    if (foc_double_dq_switch(pll_info.pll_theta, foc_ctrl.rpm, foc_sample.pll_speed))
+    {
+        /* 与双 dq 预置速度 PI 时的给定一致，避免闭环首拍从零重新加速。 */
+        speed_td.speed_rpm = spd_pi.ref_value;
+        speed_td.accel_rpm_s = 0.0f;
+        foc_ctrl.mecha = CLOSE;
+    }
+    else
+        foc_ctrl.mecha = OPEN_IF; /* 预置失败不改控制状态，继续 IF，下拍重新检查条件。 */
 }
 
 static void foc_close(void)
@@ -165,12 +179,10 @@ void foc_in_interrupt(void)
         break;
 
     case OPEN_IF:
+    case OPEN2CLOSE:
+        /* 交接当拍仍先推进 IF 角度，随后计算与该角度对应的 dq 电压。 */
         foc_open_if();
         break;
-
-    case OPEN2CLOSE:
-        foc_open2close();
-        return;
 
     case CLOSE:
         foc_close();
@@ -183,7 +195,7 @@ void foc_in_interrupt(void)
     }
     
 
-    if(foc_ctrl.mecha == OPEN_IF)
+    if((foc_ctrl.mecha == OPEN_IF) || (foc_ctrl.mecha == OPEN2CLOSE))
     {
         clarke_transform(&foc);
 
@@ -200,6 +212,15 @@ void foc_in_interrupt(void)
         park_transform(&foc);
         foc.v_d = parallel_pid_ctrl(&id_pi, id_pi.ref_value, foc.i_d);
         foc.v_q = parallel_pid_ctrl(&iq_pi, iq_pi.ref_value, foc.i_q);
+
+        
+
+        /* 交接后直接走公共逆 Park/PWM 路径，本拍不再执行闭环 PI。 */
+        if (foc_ctrl.mecha == OPEN2CLOSE)
+        {
+            foc_open2close();
+        }
+        
     }
     else if(foc_ctrl.mecha == CLOSE)
     {
@@ -253,6 +274,13 @@ void foc_in_maincyc(void)
 
     case OPEN_IF:
         /* TODO: 更新 IF 开环目标指令。 */
+
+        /* 使用本拍 PLL 机械转速，与最终机械转速指令比较；边界 5 rpm 也允许切换。 */
+        foc_sample.pll_speed = pll_info.omega * 60.0f / (FOC_TWO_PI * MOTOR_POLE_PAIRS);
+        if ( fabsf(foc_sample.pll_speed - foc_ctrl.rpm) <= 5.0f )
+            foc_ctrl.mecha = OPEN2CLOSE;
+
+
         break;
 
     case OPEN2CLOSE:
@@ -260,8 +288,9 @@ void foc_in_maincyc(void)
         break;
 
     case CLOSE:
-        /* TODO: 按约定周期执行速度环，更新电流目标。 */
-        spd_pi.ref_value = foc_ctrl.rpm;
+        /* 1 ms 任务：先平滑目标转速，再运行速度 PI；IF 阶段不调用 TD。 */
+        speed_td_update(foc_ctrl.rpm, SPE_DT, FOC_SPEED_TD_WN, &speed_td);
+        spd_pi.ref_value = speed_td.speed_rpm;
         foc_sample.pll_speed = pll_info.omega * 60.0f / (M_2PI * MOTOR_POLE_PAIRS);
         iq_pi.ref_value = parallel_pid_ctrl(&spd_pi, spd_pi.ref_value, foc_sample.pll_speed);
         break;

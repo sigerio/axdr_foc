@@ -56,6 +56,21 @@ typedef struct
 
 extern pll_info_t pll_info;
 
+/* 二阶线性跟踪微分器：平滑速度指令，阻尼比固定为 1。 */
+typedef struct
+{
+    float speed_rpm;       /* 平滑后的机械转速给定，rpm */
+    float accel_rpm_s;     /* 速度给定的变化率，rpm/s；不是实测加速度 */
+} speed_td_t;
+
+extern volatile speed_td_t speed_td;
+
+/* dt: 秒；wn: 自然角频率，s^-1，越大跟踪越快。
+ * 初次使用：speed_rpm 设为起始给定，accel_rpm_s 设为 0；后续保留状态。
+ * 无效参数/状态或计算溢出时保持原状态；本接口不限制最大加速度。
+ */
+void speed_td_update(float target_rpm, float dt, float wn, volatile speed_td_t *td);
+
 extern const vesc_observer_config_t vesc_observer_config;
 extern vesc_observer_input_t vesc_observer_input;
 extern vesc_observer_state_t vesc_observer_state;

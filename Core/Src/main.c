@@ -109,6 +109,9 @@ void vofa_start(void)
   vofa_send_data(6,foc.i_q);
   vofa_send_data(7,foc_sample.obs_theta);
   vofa_send_data(8,pll_info.pll_theta);
+  vofa_send_data(9,foc_ctrl.rpm);
+  vofa_send_data(10,speed_td.speed_rpm);
+  vofa_send_data(11,foc_sample.pll_speed);
   vofa_sendframetail();
 }
 

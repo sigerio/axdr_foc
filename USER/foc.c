@@ -8,6 +8,7 @@
 
 foc_t foc;
 pll_info_t pll_info;
+volatile speed_td_t speed_td;
 const vesc_observer_config_t vesc_observer_config = {
     .foc_motor_r = MOTOR_R,
     .foc_motor_ls = MOTOR_L,
@@ -381,6 +382,37 @@ void vesc_pll_reset(void)
 {
     pll_info.omega = 0;
     pll_info.pll_theta = 0;
+}
+
+/* 临界阻尼 TD：speed' = accel，accel' = wn^2*(target-speed) - 2*wn*accel。
+ * 将本次目标视为在 dt 内不变，使用该二阶方程的解析离散更新：
+ * error = speed-target，c = accel+wn*error，decay = exp(-wn*dt)；
+ * error_next = (error+c*dt)*decay，accel_next = (accel-wn*c*dt)*decay。
+ * 两个结果均由旧状态计算，避免简单欧拉积分在大 wn*dt 下失稳。
+ */
+void speed_td_update(float target_rpm, float dt, float wn, volatile speed_td_t *td)
+{
+    float speed, accel, error, c, decay, next_speed, next_accel;
+
+    if (!td || !isfinite(target_rpm) || !isfinite(dt) || dt <= 0.0f ||
+        !isfinite(wn) || wn <= 0.0f)
+        return;
+
+    speed = td->speed_rpm;
+    accel = td->accel_rpm_s;
+    if (!isfinite(speed) || !isfinite(accel))
+        return;
+
+    error = speed - target_rpm;
+    c = accel + wn * error;
+    decay = expf(-wn * dt);
+    next_speed = target_rpm + (error + c * dt) * decay;
+    next_accel = (accel - wn * c * dt) * decay;
+    if (!isfinite(next_speed) || !isfinite(next_accel))
+        return;
+
+    td->speed_rpm = next_speed;
+    td->accel_rpm_s = next_accel;
 }
 
 /* 速度外环：调用周期为 1 ms，ki 已包含该周期；输出为 q 轴电流给定。
