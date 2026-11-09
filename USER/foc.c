@@ -177,7 +177,7 @@ void zero_sequence(foc_t *foc)
     float alpha, beta, bus, va, vb, vc, vmax, vmin, offset, denominator;
     if (!svpwm_prepare(foc, &alpha, &beta, &bus))
         return;
-
+    // 反park
     va = alpha;
     vb = -0.5f * alpha + SQRT3_BY_2 * beta;
     vc = -0.5f * alpha - SQRT3_BY_2 * beta;
